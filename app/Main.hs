@@ -6,14 +6,11 @@ import Graphics.Gloss
 import Lib
 
 main :: IO ()
-main = display (InWindow "Nice Window" (200, 200) (10, 10)) white $ drawField initField
+main = display (InWindow "TetrisHS" (200, 200) (10, 10)) white $ drawField initField
 
 type Pos = (Int, Int)
-
 type Map = [(Pos, Color)]
-
 type Tetris = Map
-
 type Shape = [Pos]
 
 data GameState = GameState
@@ -26,7 +23,9 @@ drawField :: Map -> Picture
 drawField field = Pictures $ (\((x, y), c) -> color c (drawRect (Rectangle (x * 10, y * 10) (10, 10)))) <$> field
 
 initField :: Map
-initField = [((1, 1), blue), ((1, 2), blue), ((1, 3), red), ((2, 1), red)]
+initField = [((-1,y), black) | y <- [0 .. 20] ] ++
+            [((11,y), black) | y <- [0 .. 20] ] ++
+            [((x,0), black) | x <- [0 .. 10] ]
 
 drawRect :: Rectangle -> Picture
 drawRect rect = translate (fromIntegral px) (fromIntegral py) $ uncurry rectangleSolid (fromIntegral x, fromIntegral y)
@@ -84,6 +83,6 @@ step (GameState m t (x, y)) =
   GameState
     (if colidesWithMapWhenDrop then anker m t else m)
     (if colidesWithMapWhenDrop then getRandomTetris else t)
-    (if colidesWithMapWhenDrop then (3, 0) else (x, y + 1))
+    (if colidesWithMapWhenDrop then (3, 21) else (x, y - 1))
   where
-    colidesWithMapWhenDrop = colides (translateShape (getShape t) (x, y + 1)) (getShape m)
+    colidesWithMapWhenDrop = colides (translateShape (getShape t) (x, y - 1)) (getShape m)
