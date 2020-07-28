@@ -9,9 +9,8 @@ main :: IO ()
 main = display (InWindow "Nice Window" (200, 200) (10, 10)) white $ drawField initField
 
 type Pos = (Int, Int)
-type Map = [(Pos, Field)]
+type Map = [(Pos, Color)]
 type Tetris = Map
-type Field = Color
 type Shape = [Pos]
 
 data GameState = GameState {
@@ -23,10 +22,6 @@ data GameState = GameState {
 
 drawField :: Map -> Picture
 drawField field = Pictures $ (\((x,y),c) -> color c (drawRect (Rectangle (x* 10,y * 10) (10,10)))) <$> field
-
-{-filterEmptyFields :: Map -> Map
-filterEmptyFields map = (>>=) map (\(x,y,f) -> case f of Nothing -> []
-                                                         f  -> [(x,y,f)])  -}
 
 initField :: Map
 initField = [((1,1),blue),((1,2),blue), ((1,3),red), ((2,1),red)]
@@ -53,3 +48,15 @@ o = [(0,0), (0,1), (1,0), (1,1)]
 
 mirrored :: Shape -> Shape
 mirrored s = (\(x,y) -> (-x,y)) <$> s
+
+rotate :: Shape -> Shape
+rotate s = (\(x,y) -> (-y,x)) <$> s
+
+getShape :: Map -> Shape
+getShape m = fst <$> m
+
+colidesWithMap :: Map -> Tetris -> Bool
+colidesWithMap m t = colides (getShape m) (getShape t)
+
+colides :: Shape -> Shape -> Bool
+colides m t = any (\(x,y) -> (x, y) `elem` t) m
