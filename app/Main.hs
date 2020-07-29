@@ -4,25 +4,42 @@ module Main where
 
 import Graphics.Gloss
 import Lib
+import Graphics.Gloss.Data.ViewPort (ViewPort)
+import Graphics.Gloss.Interface.IO.Game (Event)
+import Debug.Trace (traceShow)
 
 main :: IO ()
-main = display (InWindow "TetrisHS" (200, 200) (10, 10)) white $ drawField initField
+main = Graphics.Gloss.play
+  (InWindow "TetrisHS" (300, 500) (10, 10))
+  white
+  60
+  initGame
+  drawGame
+  handleInput
+  step
 
 type Pos = (Int, Int)
-type Map = [(Pos, Color)]
-type Tetris = Map
+type Tetris = [(Pos, Color)]
 type Shape = [Pos]
 
 data GameState = GameState
-  { field :: Map,
+  { field :: Tetris,
     tetris :: Tetris,
-    pos :: Pos
+    pos :: Pos,
+    lastFalltime :: Float
   }
 
-drawField :: Map -> Picture
-drawField field = Pictures $ (\((x, y), c) -> color c (drawRect (Rectangle (x * 10, y * 10) (10, 10)))) <$> field
+drawTetris :: Tetris -> Picture
+drawTetris t = Pictures $ (\((x, y), c) -> color c (drawRect (Rectangle (x * 10, y * 10) (10, 10)))) <$> t
 
-initField :: Map
+drawGame :: GameState -> Picture
+drawGame (GameState m t (x,y) _) = translate (-50) (-30) $ Pictures [drawTetris m,
+                                                                     translate (fromIntegral x*10 ) (fromIntegral y*10) (drawTetris t)]
+
+initGame :: GameState
+initGame = GameState initField getRandomTetris (4,20) 0
+
+initField :: Tetris
 initField = [((-1,y), black) | y <- [0 .. 20] ] ++
             [((11,y), black) | y <- [0 .. 20] ] ++
             [((x,0), black) | x <- [0 .. 10] ]
@@ -43,7 +60,9 @@ tetriz = [
   colorizeShape z $ bright green,
   colorizeShape (mirrored z) $ bright magenta,
   colorizeShape i $ bright cyan,
-  colorizeShape i $ bright orange]
+  colorizeShape o $ bright orange,
+  colorizeShape t $ bright yellow
+  ]
 
 l :: Shape
 l = [(0, 0), (0, 1), (0, 2), (1, 0)]
@@ -57,13 +76,16 @@ i = [(0, 0), (0, 1), (0, 2), (0, 3)]
 o :: Shape
 o = [(0, 0), (0, 1), (1, 0), (1, 1)]
 
+t :: Shape
+t = [(0, 1), (1, 1), (2, 1), (1, 0)]
+
 mirrored :: Shape -> Shape
 mirrored s = (\(x, y) -> (- x, y)) <$> s
 
 rotate :: Shape -> Shape
 rotate s = (\(x, y) -> (- y, x)) <$> s
 
-getShape :: Map -> Shape
+getShape :: Tetris -> Shape
 getShape m = fst <$> m
 
 colides :: Shape -> Shape -> Bool
@@ -72,17 +94,30 @@ colides m t = any (\(x, y) -> (x, y) `elem` t) m
 translateShape :: Shape -> Pos -> Shape
 translateShape s (x1, y1) = (\(x, y) -> (x + x1, y + y1)) <$> s
 
-anker :: Map -> Tetris -> Map
-anker m t = m ++ t
+translateTetris :: Tetris -> Pos -> Tetris
+translateTetris s (x1, y1) = (\((x, y), c) -> ((x + x1, y + y1), c)) <$> s
+
+anker :: Tetris -> Tetris -> Pos -> Tetris
+anker m t p= m ++ translateTetris t p
 
 getRandomTetris :: Tetris
 getRandomTetris = head tetriz
 
-step :: GameState -> GameState
-step (GameState m t (x, y)) =
+fallTime = 0.5
+
+step :: Float -> GameState -> GameState
+step s (GameState m t p ft) = if (ft + s) > fallTime then gamestep (GameState m t p ft)
+                                                     else GameState m t p (traceShow ft ft + s + s)
+                                                     
+gamestep :: GameState -> GameState
+gamestep (GameState m t (x, y) _) =
   GameState
-    (if colidesWithMapWhenDrop then anker m t else m)
-    (if colidesWithMapWhenDrop then getRandomTetris else t)
-    (if colidesWithMapWhenDrop then (3, 21) else (x, y - 1))
+    (if colidesWithMapAfterDrop then anker m t (x,y) else m)
+    (if colidesWithMapAfterDrop then getRandomTetris else t)
+    (if colidesWithMapAfterDrop then (3, 21) else (x, y - 1))
+    0
   where
-    colidesWithMapWhenDrop = colides (translateShape (getShape t) (x, y - 1)) (getShape m)
+    colidesWithMapAfterDrop = colides (translateShape (getShape t) (x, y - 1)) (getShape m)
+
+handleInput :: (Event -> GameState -> GameState)
+handleInput ev g = g
