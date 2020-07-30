@@ -5,7 +5,7 @@ module Main where
 import Graphics.Gloss
 import Lib
 import Graphics.Gloss.Data.ViewPort (ViewPort)
-import Graphics.Gloss.Interface.IO.Game (Event)
+import Graphics.Gloss.Interface.IO.Game (Event(EventKey), SpecialKey (..), Key (..), KeyState (Down))
 import Debug.Trace (traceShow)
 
 main :: IO ()
@@ -21,6 +21,7 @@ main = Graphics.Gloss.play
 type Pos = (Int, Int)
 type Tetris = [(Pos, Color)]
 type Shape = [Pos]
+fallTime = 0.5
 
 data GameState = GameState
   { field :: Tetris,
@@ -82,8 +83,8 @@ t = [(0, 1), (1, 1), (2, 1), (1, 0)]
 mirrored :: Shape -> Shape
 mirrored s = (\(x, y) -> (- x, y)) <$> s
 
-rotate :: Shape -> Shape
-rotate s = (\(x, y) -> (- y, x)) <$> s
+rotateTetris :: Tetris -> Tetris
+rotateTetris s = (\((x, y), c) -> ((-y, x), c)) <$> s
 
 getShape :: Tetris -> Shape
 getShape m = fst <$> m
@@ -103,21 +104,45 @@ anker m t p= m ++ translateTetris t p
 getRandomTetris :: Tetris
 getRandomTetris = head tetriz
 
-fallTime = 0.5
-
 step :: Float -> GameState -> GameState
-step s (GameState m t p ft) = if (ft + s) > fallTime then gamestep (GameState m t p ft)
-                                                     else GameState m t p (traceShow ft ft + s + s)
-                                                     
-gamestep :: GameState -> GameState
-gamestep (GameState m t (x, y) _) =
-  GameState
+step s (GameState m t p ft) = if (ft + s) > fallTime then fst $ fall (GameState m t p ft)
+                                                     else GameState m t p (ft + s + s)
+fall :: GameState -> (GameState, Bool)
+fall (GameState m t (x, y) s) =
+   (GameState
     (if colidesWithMapAfterDrop then anker m t (x,y) else m)
     (if colidesWithMapAfterDrop then getRandomTetris else t)
     (if colidesWithMapAfterDrop then (3, 21) else (x, y - 1))
     0
+    ,
+    colidesWithMapAfterDrop)
   where
-    colidesWithMapAfterDrop = colides (translateShape (getShape t) (x, y - 1)) (getShape m)
+    colidesWithMapAfterDrop = collisionState (GameState m t (x, y - 1) s)
+
+collisionState :: GameState -> Bool
+collisionState (GameState m t (x, y) _) = colides (translateShape (getShape t) (x, y)) (getShape m)
+
+fastfall :: GameState -> GameState
+fastfall g = fst $ until snd (\(g, _) -> fall g) (g, True)
+
+move :: GameState -> Pos -> GameState
+move (GameState m t (x, y) s) (sx,sy)= if collisionState transG
+                                then g
+                                else transG
+                                where g = GameState m t (x, y) s
+                                      transG = GameState m t (x + sx, y + sy) s
+
+rotateKey :: GameState -> GameState
+rotateKey (GameState m t p s) =  if collisionState rotG
+                                      then GameState m t p s
+                                      else rotG
+                                      where rotG = GameState m (rotateTetris t) p s
 
 handleInput :: (Event -> GameState -> GameState)
-handleInput ev g = g
+handleInput (EventKey key Down _ _) g = case key of SpecialKey KeyUp -> fastfall g
+                                                    SpecialKey KeyDown -> fst $ fall g
+                                                    SpecialKey KeyLeft -> move g (-1,0)
+                                                    SpecialKey KeyRight -> move g (1,0)
+                                                    SpecialKey KeySpace -> rotateKey g
+                                                    _ -> g
+handleInput _ g = g
