@@ -6,39 +6,43 @@ import Graphics.Gloss
 import Lib
 import Graphics.Gloss.Data.ViewPort (ViewPort)
 import Graphics.Gloss.Interface.IO.Game (Event(EventKey), SpecialKey (..), Key (..), KeyState (Down))
+import System.Random (getStdRandom, newStdGen, randomR, StdGen)
 import Debug.Trace (traceShow)
 
 main :: IO ()
-main = Graphics.Gloss.play
-  (InWindow "TetrisHS" (300, 500) (10, 10))
-  white
-  60
-  initGame
-  drawGame
-  handleInput
-  step
+main = do
+      randomGen <- newStdGen
+      play
+        (InWindow "TetrisHS" (300, 500) (10, 10))
+        white
+        60
+        (initGame randomGen)
+        drawGame
+        handleInput
+        step
 
 type Pos = (Int, Int)
 type Tetris = [(Pos, Color)]
 type Shape = [Pos]
 fallTime = 0.5
 
-data GameState = GameState
+data GameModel = GameModel
   { field :: Tetris,
     tetris :: Tetris,
     pos :: Pos,
-    lastFalltime :: Float
+    lastFalltime :: Float,
+    rand :: StdGen
   }
 
 drawTetris :: Tetris -> Picture
 drawTetris t = Pictures $ (\((x, y), c) -> color c (drawRect (Rectangle (x * 10, y * 10) (10, 10)))) <$> t
 
-drawGame :: GameState -> Picture
-drawGame (GameState m t (x,y) _) = translate (-50) (-30) $ Pictures [drawTetris m,
+drawGame :: GameModel -> Picture
+drawGame (GameModel m t (x,y) _ _) = translate (-50) (-30) $ Pictures [drawTetris m,
                                                                      translate (fromIntegral x*10 ) (fromIntegral y*10) (drawTetris t)]
 
-initGame :: GameState
-initGame = GameState initField getRandomTetris (4,20) 0
+initGame :: StdGen -> GameModel
+initGame rand = GameModel initField (fst (randomTetris rand)) (4,20) 0 rand
 
 initField :: Tetris
 initField = [((-1,y), black) | y <- [0 .. 20] ] ++
@@ -101,44 +105,66 @@ translateTetris s (x1, y1) = (\((x, y), c) -> ((x + x1, y + y1), c)) <$> s
 anker :: Tetris -> Tetris -> Pos -> Tetris
 anker m t p= m ++ translateTetris t p
 
-getRandomTetris :: Tetris
-getRandomTetris = head tetriz
+randomTetris :: StdGen -> (Tetris, StdGen)
+randomTetris rand = (tetriz !! fst randT, snd randT)
+        where randT = randomR (0, (length tetriz) - 1) rand
 
-step :: Float -> GameState -> GameState
-step s (GameState m t p ft) = if (ft + s) > fallTime then fst $ fall (GameState m t p ft)
-                                                     else GameState m t p (ft + s + s)
-fall :: GameState -> (GameState, Bool)
-fall (GameState m t (x, y) s) =
-   (GameState
-    (if colidesWithMapAfterDrop then anker m t (x,y) else m)
-    (if colidesWithMapAfterDrop then getRandomTetris else t)
+step :: Float -> GameModel -> GameModel
+step s (GameModel m t p ft r) = if (ft + s) > fallTime then fst $ fall (GameModel m t p ft r)
+                                                     else GameModel m t p (ft + s + s) r
+
+fall :: GameModel -> (GameModel, Bool)
+fall (GameModel m t (x, y) s r) =
+   (GameModel
+    (if colidesWithMapAfterDrop then deleteFullLines $ anker m t (x,y) else m)
+    (if colidesWithMapAfterDrop then fst randTet else t)
     (if colidesWithMapAfterDrop then (3, 21) else (x, y - 1))
     0
+    (snd randTet)
     ,
     colidesWithMapAfterDrop)
   where
-    colidesWithMapAfterDrop = collisionState (GameState m t (x, y - 1) s)
+    colidesWithMapAfterDrop = collisionState (GameModel m t (x, y - 1) s r)
+    randTet = randomTetris r
 
-collisionState :: GameState -> Bool
-collisionState (GameState m t (x, y) _) = colides (translateShape (getShape t) (x, y)) (getShape m)
+collisionState :: GameModel -> Bool
+collisionState (GameModel m t (x, y) _ _) = colides (translateShape (getShape t) (x, y)) (getShape m)
 
-fastfall :: GameState -> GameState
-fastfall g = fst $ until snd (\(g, _) -> fall g) (g, True)
+fastfall :: GameModel -> GameModel
+fastfall g = fst $ until snd (\(g, _) -> fall g) (g, False)
 
-move :: GameState -> Pos -> GameState
-move (GameState m t (x, y) s) (sx,sy)= if collisionState transG
+move :: GameModel -> Pos -> GameModel
+move (GameModel m t (x, y) s r) (sx,sy)= if collisionState transG
                                 then g
                                 else transG
-                                where g = GameState m t (x, y) s
-                                      transG = GameState m t (x + sx, y + sy) s
+                                where g = GameModel m t (x, y) s r
+                                      transG = GameModel m t (x + sx, y + sy) s r
 
-rotateKey :: GameState -> GameState
-rotateKey (GameState m t p s) =  if collisionState rotG
-                                      then GameState m t p s
+rotateKey :: GameModel -> GameModel
+rotateKey (GameModel m t p s r) =  if collisionState rotG
+                                      then GameModel m t p s r
                                       else rotG
-                                      where rotG = GameState m (rotateTetris t) p s
+                                      where rotG = GameModel m (rotateTetris t) p s r
 
-handleInput :: (Event -> GameState -> GameState)
+elems :: (Eq a) => [a] -> [a] -> Bool
+elems es l = all (`elem` l) es
+
+deleteFullLines :: Tetris -> Tetris
+deleteFullLines m = foldl deleteLine m ((>>=) [1 .. 19] (\z -> ([z | isLineFull m z])))
+
+isLineFull :: Tetris -> Int -> Bool
+isLineFull m y = traceShow a a where a = elems [(x, y) | x <- [0 .. 10]] $ fst <$> m
+
+deleteLine :: Tetris -> Int -> Tetris
+deleteLine m i =(\((x,y),c) -> if y > i && x /= -1 && x /= 11
+                               then ((x,y - 1),c)
+                               else ((x,y),c))
+                                                <$> filter (\((x,y),_) -> y /= i || isWall (x, y)) m
+
+isWall :: Pos -> Bool
+isWall (x,y) = x == -1 || x == 11 || y == 0
+
+handleInput :: (Event -> GameModel -> GameModel)
 handleInput (EventKey key Down _ _) g = case key of SpecialKey KeyUp -> fastfall g
                                                     SpecialKey KeyDown -> fst $ fall g
                                                     SpecialKey KeyLeft -> move g (-1,0)

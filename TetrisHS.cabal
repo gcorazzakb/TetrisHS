@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 79481332dc414fbf4e600fd7c3b18035decb2d523a5765561e10f5b5ad52eea6
+-- hash: 55af89fb16b308d66e4abbcb51f0077da10fe8d9f3d31c5d69647593877bd95d
 
 name:           TetrisHS
 version:        0.1.0.0
@@ -35,6 +35,7 @@ library
   build-depends:
       base >=4.7 && <5
     , gloss
+    , random
   default-language: Haskell2010
 
 executable TetrisHS-exe
@@ -48,6 +49,7 @@ executable TetrisHS-exe
       TetrisHS
     , base >=4.7 && <5
     , gloss
+    , random
   default-language: Haskell2010
 
 test-suite TetrisHS-test
@@ -62,4 +64,5 @@ test-suite TetrisHS-test
       TetrisHS
     , base >=4.7 && <5
     , gloss
+    , random
   default-language: Haskell2010
